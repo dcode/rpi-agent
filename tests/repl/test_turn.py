@@ -82,6 +82,20 @@ def test_tool_call_without_name_or_args(config: AppConfig, no_prune: list[str]) 
     assert "Tool Execution: <unnamed>()" in run_turn(runner, config)
 
 
+def test_final_response_skips_non_text_parts(
+    config: AppConfig, no_prune: list[str]
+) -> None:
+    runner = FakeRunner([FakeEvent(parts=["Alpha ", None, "", "Omega"], final=True)])
+    assert "Alpha Omega" in run_turn(runner, config)
+
+
+def test_final_response_with_only_non_text_parts(
+    config: AppConfig, no_prune: list[str]
+) -> None:
+    out = run_turn(FakeRunner([FakeEvent(parts=[None], final=True)]), config)
+    assert "Turn completed with no direct response." in out
+
+
 def test_empty_response_message(config: AppConfig, no_prune: list[str]) -> None:
     out = run_turn(FakeRunner([FakeEvent(final=True)]), config)
     assert "Turn completed with no direct response." in out

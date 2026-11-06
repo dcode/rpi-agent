@@ -13,6 +13,7 @@ dependencies = [
     "mcp",
     "prompt-toolkit",
     "python-frontmatter",
+    "pyyaml",
     "rich",
 ]
 

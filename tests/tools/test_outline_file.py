@@ -23,20 +23,37 @@ def test_python(tools: CodebaseTools) -> None:
     assert "read_file" in result
 
 
-@pytest.mark.xfail(
-    reason="Bug: '^' only anchors the def branch, so indented methods are skipped",
-    raises=AssertionError,
-)
 def test_python_includes_methods(tools: CodebaseTools) -> None:
-    assert "    4 |     def run(self):" in tools.outline_file("pkg/app.py")
+    result = tools.outline_file("pkg/app.py")
+    assert result.startswith("### Structural Outline of `pkg/app.py` (3 declarations):")
+    assert "    4 |     def run(self):" in result
 
 
-@pytest.mark.xfail(
-    reason="Bug: the class branch is unanchored and matches inside any line",
-    raises=AssertionError,
+def test_python_nested_and_async_methods(tools: CodebaseTools, git_repo: Path) -> None:
+    result = _outline(
+        tools,
+        git_repo,
+        "n.py",
+        "class A:\n    class B:\n        async def go(self):\n            pass\n",
+    )
+    assert "(3 declarations)" in result
+    assert "    3 |         async def go(self):" in result
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "x = 1  # subclass Foo\n",
+        "# class Commented\n",
+        "    # def commented():\n",
+        "default_value = 1\n",
+        "classifier = None\n",
+    ],
 )
-def test_python_ignores_class_in_comments(tools: CodebaseTools, git_repo: Path) -> None:
-    result = _outline(tools, git_repo, "c.py", "x = 1  # subclass Foo\n")
+def test_python_ignores_non_declarations(
+    tools: CodebaseTools, git_repo: Path, line: str
+) -> None:
+    result = _outline(tools, git_repo, "c.py", line)
     assert result.startswith("No specific structural declarations")
 
 

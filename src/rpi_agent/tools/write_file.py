@@ -63,5 +63,5 @@ class WriteFileTool(RepoScopedTool):
             updated = content.replace(old_str, new_str, 1)
             target.write_text(updated, encoding="utf-8")
             return f"Successfully applied surgical replacement in '{file_path}'."
-        except (OSError, CodebaseToolError) as err:
+        except (OSError, UnicodeDecodeError, CodebaseToolError) as err:
             return f"Error replacing in file '{file_path}': {err}"

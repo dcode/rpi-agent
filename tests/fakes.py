@@ -10,18 +10,27 @@ from typing import Any
 
 @dataclass
 class FakeEvent:
-    """Minimal stand-in for `google.adk.events.Event`."""
+    """Minimal stand-in for `google.adk.events.Event`.
+
+    `text` is shorthand for a single text part; `parts` gives full control,
+    where None models a non-text part (e.g. a function call or thought).
+    """
 
     text: str | None = None
     final: bool = False
     calls: list[Any] = field(default_factory=list)
     responses: list[Any] = field(default_factory=list)
+    parts: list[str | None] | None = None
 
     @property
     def content(self) -> Any:
-        if self.text is None:
+        if self.parts is not None:
+            texts = self.parts
+        elif self.text is not None:
+            texts = [self.text]
+        else:
             return None
-        return SimpleNamespace(parts=[SimpleNamespace(text=self.text)])
+        return SimpleNamespace(parts=[SimpleNamespace(text=t) for t in texts])
 
     def get_function_calls(self) -> list[Any]:
         return self.calls

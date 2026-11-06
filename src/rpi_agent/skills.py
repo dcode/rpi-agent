@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import frontmatter
+import yaml
 
 from rpi_agent.exceptions import SkillNotFoundError
 
@@ -68,11 +69,7 @@ class SkillRegistry:
                 resources: list[str] = []
                 for entry in sorted(skill_dir.rglob("*")):
                     if entry.is_file() and entry.name != "SKILL.md":
-                        try:
-                            rel_path = entry.relative_to(skill_dir).as_posix()
-                            resources.append(rel_path)
-                        except ValueError:
-                            continue
+                        resources.append(entry.relative_to(skill_dir).as_posix())
 
                 self._skills[skill_name] = SkillMetadata(
                     name=skill_name,
@@ -81,7 +78,7 @@ class SkillRegistry:
                     instructions=post.content.strip(),
                     resources=resources,
                 )
-            except OSError, ValueError, KeyError:
+            except OSError, ValueError, KeyError, yaml.YAMLError:
                 continue
 
         return len(self._skills)

@@ -67,9 +67,28 @@ def test_os_error_is_swallowed(
     assert complete(completer, "see ./") == []
 
 
-@pytest.mark.xfail(
-    reason="Bug: get_word_before_cursor() splits on '/', so nested paths never complete",
-    raises=AssertionError,
-)
 def test_nested_path_completion(completer: RpiCliCompleter) -> None:
     assert complete(completer, "open pkg/ap") == [("app.py", -2)]
+
+
+def test_trailing_slash_lists_that_directory(completer: RpiCliCompleter) -> None:
+    assert complete(completer, "open pkg/") == [("app.py", 0)]
+
+
+def test_dot_relative_prefix(completer: RpiCliCompleter) -> None:
+    assert complete(completer, "look at ./pk") == [("pkg", -2)]
+    assert complete(completer, "look at ./pkg/a") == [("app.py", -1)]
+
+
+def test_bare_word_has_no_path_completions(completer: RpiCliCompleter) -> None:
+    assert complete(completer, "open pk") == []
+
+
+def test_dotfile_prefix_completes_from_root(
+    completer: RpiCliCompleter, git_repo: Path
+) -> None:
+    (git_repo / ".envrc").write_text("")
+    (git_repo / ".editorconfig").write_text("")
+    assert complete(completer, "source .en") == [(".envrc", -3)]
+    # Ignored directories stay hidden even when the prefix matches them.
+    assert complete(completer, "see .gi") == []

@@ -34,11 +34,7 @@ class FindFilesTool(RepoScopedTool):
                 for file_name in files:
                     if Path(file_name).match(pattern):
                         full_path = Path(root) / file_name
-                        try:
-                            rel = full_path.relative_to(self.repo_root).as_posix()
-                            matches.append(rel)
-                        except ValueError:
-                            continue
+                        matches.append(full_path.relative_to(self.repo_root).as_posix())
 
             if not matches:
                 return f"No files matching '{pattern}' found under '{path}'."

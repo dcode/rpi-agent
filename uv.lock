@@ -1917,6 +1917,7 @@ dependencies = [
     { name = "mcp" },
     { name = "prompt-toolkit" },
     { name = "python-frontmatter" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 
@@ -1942,6 +1943,7 @@ requires-dist = [
     { name = "mcp" },
     { name = "prompt-toolkit" },
     { name = "python-frontmatter" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 

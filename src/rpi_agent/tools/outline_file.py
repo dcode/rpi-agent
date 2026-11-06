@@ -41,7 +41,7 @@ class OutlineFileTool(RepoScopedTool):
                     (
                         "Python",
                         re.compile(
-                            r"^(?:async\s+)?def\s+([a-zA-Z_0-9]+)|class\s+([a-zA-Z_0-9]+)"
+                            r"^\s*(?:async\s+def|def|class)\s+([a-zA-Z_][a-zA-Z_0-9]*)"
                         ),
                     )
                 )

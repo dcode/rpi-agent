@@ -95,6 +95,13 @@ def test_subagent_name_is_sanitised(
     assert captured["agent"].name == agent_name
 
 
+def test_subagent_skips_non_text_parts(
+    manager: SubAgentManager, captured: dict[str, Any]
+) -> None:
+    captured["events"] += [FakeEvent(parts=["Found ", None, "", "it."], final=True)]
+    assert asyncio.run(manager.run_subagent_async("bare", "task")) == "Found it."
+
+
 def test_subagent_no_output(manager: SubAgentManager, captured: dict[str, Any]) -> None:
     assert asyncio.run(manager.run_subagent_async("bare", "task")) == (
         "Subagent for 'bare' completed with no output."

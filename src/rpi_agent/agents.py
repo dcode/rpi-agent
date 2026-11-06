@@ -77,9 +77,8 @@ class SubAgentManager:
                 else f"Execute this task objectively: {skill_name}"
             )
 
+            # Always a valid identifier: fixed alpha prefix plus [a-zA-Z0-9_] only.
             sanitized_name = re.sub(r"[^a-zA-Z0-9_]", "_", f"subagent_{skill_name}")
-            if not sanitized_name.isidentifier():
-                sanitized_name = f"subagent_{uuid.uuid4().hex[:8]}"
 
             subagent_instruction = (
                 f"You are a specialized sub-agent executing skill '{skill_name}'.\n"

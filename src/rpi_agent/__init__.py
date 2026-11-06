@@ -11,6 +11,10 @@ within daily quota constraints.
 Version 0.7.0 maintains functionality, but expands script to a multi-file Python
 project, adds unit tests, type checking, coverage analysis, and distribution
 builds.
+
+Version 0.7.1 fixes skill discovery crashing on malformed frontmatter, nested
+path tab-completion, Python method outlining, and non-UTF-8 handling in
+replace_in_file.
 """
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"

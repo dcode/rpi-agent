@@ -54,15 +54,13 @@ def test_scan_skips_unreadable_skill(skills_dir: Path) -> None:
     assert "broken" not in reg.skills
 
 
-@pytest.mark.xfail(
-    reason="Bug: yaml.YAMLError from malformed frontmatter is not caught by scan()",
-    raises=Exception,
-)
 def test_scan_skips_malformed_frontmatter(skills_dir: Path) -> None:
     bad = skills_dir / "bad"
     bad.mkdir()
     (bad / "SKILL.md").write_text("---\nname: [unclosed\n---\nbody\n")
-    assert SkillRegistry(skills_dir).scan() == 2
+    reg = SkillRegistry(skills_dir)
+    assert reg.scan() == 2
+    assert set(reg.skills) == {"rpi-research", "bare"}
 
 
 def test_list_skills_empty(tmp_path: Path) -> None:

@@ -75,10 +75,8 @@ def test_replace_os_error(
     )
 
 
-@pytest.mark.xfail(
-    reason="Bug: UnicodeDecodeError escapes replace_in_file instead of an error string",
-    raises=UnicodeDecodeError,
-)
 def test_replace_non_utf8_file(tools: CodebaseTools, git_repo: Path) -> None:
     (git_repo / "binary.bin").write_bytes(b"\xff\xfe")
-    assert tools.replace_in_file("binary.bin", "a", "b").startswith("Error")
+    result = tools.replace_in_file("binary.bin", "a", "b")
+    assert result.startswith("Error replacing in file 'binary.bin': 'utf-8' codec")
+    assert (git_repo / "binary.bin").read_bytes() == b"\xff\xfe"

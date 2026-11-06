@@ -41,7 +41,8 @@ class RpiCliCompleter(Completer):
     def get_completions(self, document: Document, complete_event: Any) -> Any:
         """Yields auto-completions based on current line buffer."""
         text = document.text_before_cursor
-        word_before_cursor = document.get_word_before_cursor()
+        # WORD=True splits on whitespace only, keeping "src/rpi" as one path token.
+        word_before_cursor = document.get_word_before_cursor(WORD=True)
 
         if text.startswith("/"):
             for cmd, desc in self.slash_commands:
