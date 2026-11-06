@@ -1,0 +1,113 @@
+[project]
+name = "rpi-agent"
+dynamic = ["version"]
+description = "Research, Plan, Iterate, Implement (RPI) CLI agent using Google ADK and OpenAI-compatible gateways"
+readme = "README.md"
+authors = [
+    { name = "Derek Ditch", email = "dcode@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "google-adk",
+    "litellm>=1.40.0",
+    "mcp",
+    "prompt-toolkit",
+    "python-frontmatter",
+    "rich",
+]
+
+[project.scripts]
+rpi-agent = "rpi_agent.cli:run"
+
+[dependency-groups]
+test = [
+    "pytest",
+    "pytest-cov",
+]
+types = [
+    "ty",
+]
+dev = [
+    "ruff",
+    { include-group = "test" },
+    { include-group = "types" },
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ------------------------------------------------------------------------------
+# Hatch
+# ------------------------------------------------------------------------------
+
+[tool.hatch.version]
+path = "src/rpi_agent/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/rpi_agent", "tests", "README.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rpi_agent"]
+
+[tool.hatch.envs.default]
+installer = "uv"
+dependency-groups = ["dev"]
+
+# `hatch test` (pytest + coverage); `hatch test --cover` enforces fail_under.
+[tool.hatch.envs.hatch-test]
+installer = "uv"
+randomize = true
+
+[[tool.hatch.envs.hatch-test.matrix]]
+python = ["3.14"]
+
+# `hatch run types:check`
+[tool.hatch.envs.types]
+installer = "uv"
+dependency-groups = ["types", "test"]
+
+[tool.hatch.envs.types.scripts]
+check = "ty check {args:src tests}"
+
+# `hatch fmt` uses the [tool.ruff] config below instead of Hatch's defaults.
+[tool.hatch.envs.hatch-static-analysis]
+config-path = "none"
+dependencies = ["ruff"]
+
+# ------------------------------------------------------------------------------
+# Tooling
+# ------------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+xfail_strict = true
+
+[tool.coverage.run]
+source_pkgs = ["rpi_agent"]
+branch = true
+parallel = true
+
+[tool.coverage.paths]
+rpi_agent = ["src/rpi_agent", "*/rpi-agent/src/rpi_agent"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
