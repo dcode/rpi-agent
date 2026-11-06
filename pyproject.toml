@@ -11,6 +11,7 @@ dependencies = [
     "google-adk",
     "litellm>=1.40.0",
     "mcp",
+    "openai",
     "prompt-toolkit",
     "python-frontmatter",
     "pyyaml",

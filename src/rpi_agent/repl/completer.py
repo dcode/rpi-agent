@@ -34,6 +34,7 @@ class RpiCliCompleter(Completer):
             ("/implement", "Execute an approved implementation plan"),
             ("/clear", "Reset conversational session context"),
             ("/new", "Start a fresh session with clean context"),
+            ("/sessions", "List saved sessions you can resume"),
             ("/exit", "Exit the RPI agent"),
             ("/quit", "Exit the RPI agent"),
         ]

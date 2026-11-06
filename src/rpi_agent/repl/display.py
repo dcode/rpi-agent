@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime
 
+from google.adk.sessions import Session
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from rpi_agent import __version__ as VERSION
+from rpi_agent.checkpoints import CheckpointStore
 from rpi_agent.config import AppConfig
+from rpi_agent.exceptions import QuotaExhaustedError
+from rpi_agent.llm import RetryNotifier
 from rpi_agent.repo import RepoContext
 from rpi_agent.skills import SkillRegistry
 
@@ -46,6 +52,8 @@ def display_welcome_banner(
     content.append(f"{len(registry.skills)} skills discovered in {config.skills_dir}\n")
     content.append("• Token Guard: ", style="bold cyan")
     content.append(f"{prune_text} | Structure Outlining: Enabled\n", style="green")
+    content.append("• API Retries: ", style="bold cyan")
+    content.append(f"up to {config.max_retries} with backoff\n")
     content.append("• Shell Safety: ", style="bold cyan")
     content.append(safety_text, style=safety_style)
     content.append("\n\nType ")
@@ -80,6 +88,7 @@ def display_help(console: Console) -> None:
     table.add_row("/skills", "List all discovered skills in ~/.agents/skills")
     table.add_row("/status", "Show active repository, model, and token guard status")
     table.add_row("/clear, /new", "Reset context window with new session ID")
+    table.add_row("/sessions", "List saved sessions (resume with --resume <id>)")
     table.add_row("/exit, /quit", "Exit the CLI agent")
     console.print(table)
 
@@ -112,6 +121,7 @@ def display_status(
             f"[bold]Session ID:[/bold] {session_id}\n"
             f"[bold]Turns:[/bold] {turn_counter}\n"
             f"[bold]Token Pruning:[/bold] {'Enabled' if config.prune_context else 'Disabled'}\n"
+            f"[bold]Max Retries:[/bold] {config.max_retries}\n"
             f"[bold]Safety Policy:[/bold] {'YOLO' if config.yolo else 'Protected'}",
             title="Active Session Status",
             border_style="cyan",
@@ -144,3 +154,86 @@ def get_bottom_toolbar(
         f"<b>Session:</b> {safe_sess} | "
         f"<b>Turns:</b> {turn_counter}"
     )
+
+
+def display_sessions(
+    console: Console,
+    sessions: list[Session],
+    current_session_id: str,
+    checkpoints: CheckpointStore,
+) -> None:
+    """Renders saved sessions, most recent first.
+
+    Args:
+        console: Console instance.
+        sessions: Sessions to list, already ordered.
+        current_session_id: Active session, marked in the table.
+        checkpoints: Store used to count saved sub-agent results per session.
+    """
+    if not sessions:
+        console.print("[dim]No saved sessions in this repository.[/dim]")
+        return
+
+    table = Table(title="Saved Sessions", border_style="cyan")
+    table.add_column("Session ID", style="bold yellow")
+    table.add_column("Last Updated", style="white")
+    table.add_column("Saved Sub-agent Results", style="dim", justify="right")
+    for session in sessions:
+        marker = " (current)" if session.id == current_session_id else ""
+        updated = datetime.fromtimestamp(session.last_update_time).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+        table.add_row(
+            f"{session.id}{marker}",
+            updated,
+            str(len(checkpoints.for_session(session.id))),
+        )
+    console.print(table)
+    console.print("[dim]Resume a session with: rpi-agent --resume <session-id>[/dim]")
+
+
+def display_quota_exhausted(
+    console: Console,
+    error: QuotaExhaustedError,
+    session_id: str,
+    saved_results: int,
+) -> None:
+    """Explains that quota is exhausted and how to resume once it resets.
+
+    Args:
+        console: Console instance.
+        error: The quota error raised by the model client.
+        session_id: Session to resume.
+        saved_results: Number of sub-agent results checkpointed in the session.
+    """
+    reset = f"Quota resets in {error.reset_hint}." if error.reset_hint else ""
+    console.print(
+        Panel(
+            f"{escape(str(error))}\n\n"
+            f"{reset}\n"
+            f"Session [bold]{session_id}[/bold] is saved with {saved_results} "
+            "completed sub-agent result(s), which will be reused instead of re-run.\n\n"
+            f"Resume with: [bold yellow]rpi-agent --resume {session_id}[/bold yellow]",
+            title="Model Quota Exhausted",
+            border_style="red",
+        )
+    )
+
+
+def make_retry_notifier(console: Console) -> RetryNotifier:
+    """Builds a callback that reports model retries as they are scheduled.
+
+    Args:
+        console: Console to print notices on.
+
+    Returns:
+        Callback accepting (attempt, max_retries, delay_seconds, error).
+    """
+
+    def notify(attempt: int, max_retries: int, delay: float, error: Exception) -> None:
+        console.print(
+            f"[yellow]⏳ {type(error).__name__} from model gateway; retrying in "
+            f"{delay:.0f}s (attempt {attempt}/{max_retries}).[/yellow]"
+        )
+
+    return notify

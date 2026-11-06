@@ -6,31 +6,40 @@ import re
 import uuid
 from typing import Any
 
+import openai
 from google.adk.agents import LlmAgent
-from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
+from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
+from rpi_agent.checkpoints import CheckpointStore
 from rpi_agent.config import AppConfig
 from rpi_agent.constants import APP_NAME, USER_ID
 from rpi_agent.exceptions import CodebaseToolError
+from rpi_agent.llm import RetryingLiteLlm, RetryNotifier
+from rpi_agent.pruning import ContextPruner
 from rpi_agent.repo import RepoContext
 from rpi_agent.skills import SkillRegistry
 
 
-def get_llm_client(config: AppConfig) -> LiteLlm:
+def get_llm_client(
+    config: AppConfig, on_retry: RetryNotifier | None = None
+) -> RetryingLiteLlm:
     """Configures and returns the LiteLLM client for the GenAI.mil gateway.
 
     Args:
-        config: Application configuration with API key and base URL.
+        config: Application configuration with API key, base URL, and retries.
+        on_retry: Optional callback invoked before each retry wait.
 
     Returns:
-        Configured LiteLlm instance targeting the OpenAI-compatible gateway.
+        Configured RetryingLiteLlm targeting the OpenAI-compatible gateway.
     """
     model_identifier = f"openai/{config.model_name}"
-    return LiteLlm(
+    return RetryingLiteLlm(
         model=model_identifier,
+        max_retries=config.max_retries,
+        on_retry=on_retry,
         api_base=config.base_url,
         api_key=config.api_key,
     )
@@ -45,6 +54,8 @@ class SubAgentManager:
         repo_ctx: RepoContext,
         registry: SkillRegistry,
         read_tools: list[Any],
+        checkpoints: CheckpointStore | None = None,
+        on_retry: RetryNotifier | None = None,
     ) -> None:
         """Initializes SubAgentManager.
 
@@ -53,22 +64,45 @@ class SubAgentManager:
             repo_ctx: Live Git repository context.
             registry: Active skills registry.
             read_tools: List of read-only tool functions available to sub-agents.
+            checkpoints: Store for saving and reusing completed sub-agent results.
+            on_retry: Optional callback invoked before each model retry wait.
         """
         self.config = config
         self.repo_ctx = repo_ctx
         self.registry = registry
         self.read_tools = read_tools
+        self.checkpoints = checkpoints
+        self.on_retry = on_retry
 
-    async def run_subagent_async(self, skill_name: str, task_prompt: str) -> str:
+    async def run_subagent_async(
+        self, skill_name: str, task_prompt: str, session_id: str | None = None
+    ) -> str:
         """Spawns an isolated ADK agent session to execute a focused skill task.
+
+        Completed results are checkpointed per parent session; an identical
+        request in the same session reuses the saved result.
 
         Args:
             skill_name: Name of the skill to execute (e.g. 'rpi-codebase-locator').
             task_prompt: Specific task or query for the sub-agent to investigate.
+            session_id: Parent session ID used to scope checkpoints.
 
         Returns:
             The synthesized final text output from the isolated sub-agent session.
+
+        Raises:
+            QuotaExhaustedError: If the gateway quota is exhausted; propagated so
+                the whole run stops cleanly with completed checkpoints saved.
         """
+        store = self.checkpoints if session_id else None
+        if store is not None and session_id is not None:
+            saved = store.load(session_id, skill_name, task_prompt)
+            if saved is not None:
+                return (
+                    f"[Reused saved sub-agent result from {saved.created}; "
+                    f"same skill and task in this session.]\n\n{saved.result}"
+                )
+
         try:
             skill = self.registry.skills.get(skill_name)
             skill_instructions = (
@@ -87,7 +121,7 @@ class SubAgentManager:
                 f"### Skill Guidance:\n{skill_instructions}"
             )
 
-            client = get_llm_client(self.config)
+            client = get_llm_client(self.config, self.on_retry)
             sub_agent = LlmAgent(
                 name=sanitized_name,
                 model=client,
@@ -121,14 +155,22 @@ class SubAgentManager:
                             if part.text:
                                 collected_response.append(part.text)
 
-            final_text = "".join(collected_response).strip()
+        except openai.OpenAIError as err:
+            # Retries are exhausted by now; let the root agent decide how to proceed.
             return (
-                final_text
-                if final_text
-                else f"Subagent for '{skill_name}' completed with no output."
+                f"Subagent '{skill_name}' failed with a model API error after "
+                f"retries: {err}"
             )
         except (ValueError, KeyError, CodebaseToolError) as err:
             return f"Subagent '{skill_name}' execution failed: {err}"
+
+        final_text = "".join(collected_response).strip()
+        if not final_text:
+            return f"Subagent for '{skill_name}' completed with no output."
+
+        if store is not None and session_id is not None:
+            store.save(session_id, skill_name, task_prompt, final_text)
+        return final_text
 
 
 def build_root_agent(
@@ -137,6 +179,8 @@ def build_root_agent(
     registry: SkillRegistry,
     subagent_mgr: SubAgentManager,
     tools: list[Any],
+    pruner: ContextPruner | None = None,
+    on_retry: RetryNotifier | None = None,
 ) -> LlmAgent:
     """Constructs the root LlmAgent with injected skills and repository context.
 
@@ -146,15 +190,25 @@ def build_root_agent(
         registry: Loaded skills registry.
         subagent_mgr: Manager for delegating tasks to sub-agents.
         tools: Complete list of tools available to the root agent.
+        pruner: Optional request pruner run before every model call.
+        on_retry: Optional callback invoked before each model retry wait.
 
     Returns:
         Configured ADK LlmAgent ready to be bound to Runner.
     """
-    client = get_llm_client(config)
+    client = get_llm_client(config, on_retry)
 
-    async def run_subagent(skill_name: str, task_prompt: str) -> str:
-        """Spawns an isolated read-only sub-agent to execute a sub-skill pass."""
-        return await subagent_mgr.run_subagent_async(skill_name, task_prompt)
+    async def run_subagent(
+        skill_name: str, task_prompt: str, tool_context: ToolContext
+    ) -> str:
+        """Spawns an isolated read-only sub-agent to execute a sub-skill pass.
+
+        Results are saved per session; repeating the same skill and task reuses
+        the saved result instead of re-running the sub-agent.
+        """
+        return await subagent_mgr.run_subagent_async(
+            skill_name, task_prompt, session_id=tool_context.session.id
+        )
 
     all_tools = [*tools, run_subagent]
 
@@ -172,7 +226,9 @@ def build_root_agent(
         "2. When reading source code, prefer targeted 'read_file' ranges (start_line, end_line) "
         "to verify assumptions without dumping unneeded tokens.\n"
         "3. When asked to research a topic, load the 'rpi-research' skill and follow its workflow.\n"
-        "4. Use 'run_subagent' to spawn isolated sub-agents for locator, analyzer, or pattern passes.\n"
+        "4. Use 'run_subagent' to spawn isolated sub-agents for locator, analyzer, or pattern passes. "
+        "Before spawning one, check this conversation for results of earlier sub-agent calls "
+        "(including from interrupted turns) and build on them instead of repeating that work.\n"
         "5. Store research artifacts in `./thoughts/research/YYYY-MM-DD-HHmm-<topic>.md`.\n"
         "6. Store planning artifacts in `./thoughts/plans/YYYY-MM-DD-HHmm-<description>.md`.\n"
         "7. Before taking code mutation action on synthesized findings, verify critical assumptions "
@@ -185,4 +241,5 @@ def build_root_agent(
         model=client,
         instruction=system_instruction,
         tools=all_tools,
+        before_model_callback=pruner,
     )

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import openai
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from rich.console import Console
 from rich.markdown import Markdown
@@ -11,30 +11,33 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.text import Text
 
-from rpi_agent.config import AppConfig
 from rpi_agent.constants import USER_ID
 from rpi_agent.exceptions import CodebaseToolError
-from rpi_agent.pruning import prune_session_history
+from rpi_agent.pruning import ContextPruner
 
 
 async def execute_agent_turn(
     runner: Runner,
-    session_service: InMemorySessionService,
     user_input: str,
     session_id: str,
-    config: AppConfig,
     console: Console,
+    pruner: ContextPruner | None = None,
 ) -> None:
     """Executes a turn through the ADK Runner, displaying live tool calls and responses.
 
     Args:
         runner: Initialized ADK Runner.
-        session_service: InMemorySessionService instance.
         user_input: User prompt or expanded command text.
         session_id: Active session identifier.
-        config: Application configuration.
         console: Rich console instance.
+        pruner: Request pruner attached to the root agent, for reporting.
+
+    Raises:
+        QuotaExhaustedError: Propagated so the REPL can stop and offer a resume.
     """
+    if pruner is not None:
+        pruner.last_pruned_chars = 0
+
     content = types.Content(role="user", parts=[types.Part(text=user_input)])
     collected_text: list[str] = []
 
@@ -88,14 +91,18 @@ async def execute_agent_turn(
                 "[dim italic]Turn completed with no direct response.[/dim italic]"
             )
 
-        # Automatically prune historical raw tool outputs to conserve token budget
-        if config.prune_context:
-            pruned = await prune_session_history(session_service, session_id)
-            if pruned > 0:
-                console.print(
-                    f"[dim green]🍃 Context Optimized: pruned ~{pruned:,} characters of raw tool output from history.[/dim green]"
-                )
+        if pruner is not None and pruner.last_pruned_chars > 0:
+            console.print(
+                f"[dim green]🍃 Context Optimized: omitted ~{pruner.last_pruned_chars:,} "
+                "characters of earlier tool output from model requests.[/dim green]"
+            )
 
+    except openai.OpenAIError as err:
+        console.print(
+            f"[bold red]Model API Error:[/bold red] {escape(str(err))}\n"
+            "[dim]Retries exhausted. The session is saved; send the prompt again to "
+            "retry.[/dim]"
+        )
     except (ValueError, KeyError, CodebaseToolError) as err:
         console.print(f"[bold red]Execution Error:[/bold red] {escape(str(err))}")
     finally:

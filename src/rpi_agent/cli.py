@@ -8,16 +8,17 @@ import sys
 from pathlib import Path
 
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
 from rich.console import Console
 from rich.markup import escape
 
 from rpi_agent import __version__ as VERSION
 from rpi_agent.agents import SubAgentManager, build_root_agent
-from rpi_agent.config import resolve_config
+from rpi_agent.checkpoints import CheckpointStore
+from rpi_agent.config import resolve_config, resolve_state_dir
 from rpi_agent.constants import (
     APP_NAME,
     DEFAULT_BASE_URL,
+    DEFAULT_MAX_RETRIES,
     DEFAULT_MODEL,
     DEFAULT_SKILLS_DIR,
 )
@@ -27,8 +28,11 @@ from rpi_agent.diagnostics import (
     run_tools_diagnostic,
 )
 from rpi_agent.exceptions import ConfigurationError
+from rpi_agent.pruning import ContextPruner
 from rpi_agent.repl import repl_loop
+from rpi_agent.repl.display import make_retry_notifier
 from rpi_agent.repo import RepoContext
+from rpi_agent.sessions import LATEST_SESSION, open_session_service
 from rpi_agent.skills import SkillRegistry
 from rpi_agent.tools import CodebaseTools, build_tool_sets
 
@@ -87,6 +91,23 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable automatic session history pruning (keeps full raw tool outputs in context)",
     )
     parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help=(
+            "Retries for rate limits and transient gateway errors "
+            f"(default: RPI_AGENT_MAX_RETRIES -> {DEFAULT_MAX_RETRIES})"
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const=LATEST_SESSION,
+        default=None,
+        metavar="SESSION_ID",
+        help="Resume a saved session (default: the most recent one)",
+    )
+    parser.add_argument(
         "--test-discovery",
         action="store_true",
         help="Run discovery diagnostics across the skills directory and exit",
@@ -120,24 +141,45 @@ async def main(argv: list[str] | None = None) -> None:
         run_tools_diagnostic(repo_ctx.root_path, config.yolo)
         return
 
+    state_dir = resolve_state_dir(repo_ctx.root_path)
+    checkpoints = CheckpointStore(state_dir / "subagents")
+    on_retry = make_retry_notifier(Console())
+
     codebase_tools = CodebaseTools(repo_ctx.root_path, yolo=config.yolo)
     read_tools, write_tools = build_tool_sets(codebase_tools, registry)
     all_tools = [*read_tools, *write_tools]
-    subagent_mgr = SubAgentManager(config, repo_ctx, registry, read_tools)
+    subagent_mgr = SubAgentManager(
+        config, repo_ctx, registry, read_tools, checkpoints, on_retry
+    )
 
     if config.test_agent:
         run_agent_diagnostic(config, repo_ctx, registry, subagent_mgr, all_tools)
         return
 
-    root_agent = build_root_agent(config, repo_ctx, registry, subagent_mgr, all_tools)
-    session_service = InMemorySessionService()
+    pruner = ContextPruner() if config.prune_context else None
+    root_agent = build_root_agent(
+        config, repo_ctx, registry, subagent_mgr, all_tools, pruner, on_retry
+    )
+    session_service = open_session_service(state_dir)
     runner = Runner(
         agent=root_agent,
         app_name=APP_NAME,
         session_service=session_service,
     )
 
-    await repl_loop(config, repo_ctx, registry, runner, session_service)
+    try:
+        await repl_loop(
+            config,
+            repo_ctx,
+            registry,
+            runner,
+            session_service,
+            state_dir,
+            checkpoints,
+            pruner,
+        )
+    finally:
+        await session_service.close()
 
 
 def run() -> None:

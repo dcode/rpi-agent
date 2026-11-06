@@ -15,6 +15,10 @@ builds.
 Version 0.7.1 fixes skill discovery crashing on malformed frontmatter, nested
 path tab-completion, Python method outlining, and non-UTF-8 handling in
 replace_in_file.
+
+Version 0.7.2 survives quota exhaustion: rate-limit aware retries, daily-quota
+detection with resume instructions, persisted sessions (--resume, /sessions),
+and checkpointed sub-agent results reused on resume.
 """
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"

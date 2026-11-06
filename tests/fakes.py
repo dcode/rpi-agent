@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -58,3 +58,26 @@ class FakeRunner:
             raise self.error
         for event in self.events:
             yield event
+
+
+class FakePromptSession:
+    """Feeds scripted input lines, then raises the terminal exception."""
+
+    instances: list[FakePromptSession] = []
+
+    def __init__(
+        self, inputs: list[str], end: type[BaseException], **kwargs: Any
+    ) -> None:
+        self.inputs = list(inputs)
+        self.end = end
+        self.kwargs = kwargs
+        self.toolbars: list[str] = []
+        FakePromptSession.instances.append(self)
+
+    async def prompt_async(
+        self, message: Any, bottom_toolbar: Callable[[], str]
+    ) -> str:
+        self.toolbars.append(bottom_toolbar())
+        if not self.inputs:
+            raise self.end
+        return self.inputs.pop(0)

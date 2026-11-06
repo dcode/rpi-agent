@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from google.adk.sessions.sqlite_session_service import SqliteSessionService
 
 from rpi_agent import __version__, cli
+from rpi_agent.checkpoints import CheckpointStore
 from rpi_agent.constants import DEFAULT_SKILLS_DIR
 from rpi_agent.exceptions import ConfigurationError
+from rpi_agent.pruning import ContextPruner
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +38,7 @@ def test_parse_defaults() -> None:
     args = cli.parse_arguments([])
     assert args.skills_dir == DEFAULT_SKILLS_DIR
     assert args.model is None and args.base_url is None and args.api_key is None
+    assert args.max_retries is None and args.resume is None
     assert not any(
         (
             args.yolo,
@@ -65,6 +69,18 @@ def test_parse_all_options(tmp_path: Path) -> None:
     assert args.yolo and args.no_prune
 
 
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [([], None), (["--resume"], "latest"), (["--resume", "sess_abc"], "sess_abc")],
+)
+def test_parse_resume(argv: list[str], expected: str | None) -> None:
+    assert cli.parse_arguments(argv).resume == expected
+
+
+def test_parse_max_retries() -> None:
+    assert cli.parse_arguments(["--max-retries", "8"]).max_retries == 8
+
+
 def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         cli.parse_arguments(["--version"])
@@ -75,7 +91,16 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
 def test_main_starts_repl(repl_calls: list[tuple[Any, ...]], git_repo: Path) -> None:
     asyncio.run(cli.main(["--skills-dir", str(git_repo / "none")]))
     (call,) = repl_calls
-    config, repo_ctx, registry, runner, session_service = call
+    (
+        config,
+        repo_ctx,
+        registry,
+        runner,
+        session_service,
+        state_dir,
+        checkpoints,
+        pruner,
+    ) = call
     assert config.api_key == "env-key"
     assert repo_ctx.root_path == git_repo.resolve()
     assert registry.skills == {}
@@ -83,6 +108,41 @@ def test_main_starts_repl(repl_calls: list[tuple[Any, ...]], git_repo: Path) -> 
     assert runner.session_service is session_service
     # 6 read + 5 write + run_subagent
     assert len(runner.agent.tools) == 12
+
+    assert state_dir == git_repo.resolve() / ".rpi_agent"
+    assert isinstance(session_service, SqliteSessionService)
+    assert isinstance(checkpoints, CheckpointStore)
+    assert checkpoints.root == state_dir / "subagents"
+    assert isinstance(pruner, ContextPruner)
+    assert runner.agent.before_model_callback is pruner
+    assert runner.agent.model.max_retries == config.max_retries
+
+
+def test_main_no_prune_disables_pruner(repl_calls: list[tuple[Any, ...]]) -> None:
+    asyncio.run(cli.main(["--no-prune"]))
+    runner, pruner = repl_calls[0][3], repl_calls[0][7]
+    assert pruner is None
+    assert runner.agent.before_model_callback is None
+
+
+def test_main_closes_session_service_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+    original_close = SqliteSessionService.close
+
+    async def tracking_close(self: SqliteSessionService) -> None:
+        closed.append(True)
+        await original_close(self)
+
+    async def failing_repl(*_args: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(SqliteSessionService, "close", tracking_close)
+    monkeypatch.setattr(cli, "repl_loop", failing_repl)
+    with pytest.raises(RuntimeError):
+        asyncio.run(cli.main([]))
+    assert closed == [True]
 
 
 @pytest.mark.parametrize(

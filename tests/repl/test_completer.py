@@ -23,7 +23,11 @@ def complete(completer: RpiCliCompleter, text: str) -> list[tuple[str, int]]:
 
 
 def test_slash_prefix_matches(completer: RpiCliCompleter) -> None:
-    assert complete(completer, "/s") == [("/skills", -2), ("/status", -2)]
+    assert complete(completer, "/s") == [
+        ("/skills", -2),
+        ("/status", -2),
+        ("/sessions", -2),
+    ]
 
 
 def test_slash_lists_all_commands(completer: RpiCliCompleter) -> None:

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from rpi_agent.config import resolve_config, resolve_history_file_path
-from rpi_agent.constants import DEFAULT_BASE_URL, DEFAULT_MODEL
+from rpi_agent.config import resolve_config, resolve_state_dir
+from rpi_agent.constants import DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, DEFAULT_MODEL
 from rpi_agent.exceptions import ConfigurationError
 
 ENV_VARS = (
@@ -16,6 +16,7 @@ ENV_VARS = (
     "OPENAI_BASE_URL",
     "STARK_MODEL",
     "OPENAI_MODEL",
+    "RPI_AGENT_MAX_RETRIES",
 )
 
 
@@ -33,6 +34,8 @@ def make_args(**overrides: object) -> argparse.Namespace:
         "skills_dir": Path("~/skills"),
         "yolo": False,
         "no_prune": False,
+        "max_retries": None,
+        "resume": None,
         "test_discovery": False,
         "test_tools": False,
         "test_agent": False,
@@ -122,13 +125,52 @@ def test_flags_are_mapped() -> None:
     assert config.test_discovery and config.test_tools and config.test_agent
 
 
-def test_history_file_is_repo_scoped(tmp_path: Path) -> None:
-    path = resolve_history_file_path(tmp_path)
-    assert path == tmp_path / ".rpi_agent" / "history"
-    assert path.parent.is_dir()
+def test_max_retries_default() -> None:
+    assert resolve_config(make_args(api_key="k")).max_retries == DEFAULT_MAX_RETRIES
 
 
-def test_history_file_falls_back_to_home_when_unwritable(tmp_path: Path) -> None:
+def test_max_retries_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RPI_AGENT_MAX_RETRIES", "9")
+    assert resolve_config(make_args(api_key="k")).max_retries == 9
+
+
+def test_max_retries_cli_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RPI_AGENT_MAX_RETRIES", "9")
+    assert resolve_config(make_args(api_key="k", max_retries=0)).max_retries == 0
+
+
+def test_max_retries_invalid_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RPI_AGENT_MAX_RETRIES", "lots")
+    with pytest.raises(ConfigurationError, match="must be an integer, got 'lots'"):
+        resolve_config(make_args(api_key="k"))
+
+
+def test_max_retries_negative() -> None:
+    with pytest.raises(ConfigurationError, match="must be >= 0"):
+        resolve_config(make_args(api_key="k", max_retries=-1))
+
+
+def test_resume_is_mapped() -> None:
+    assert resolve_config(make_args(api_key="k")).resume is None
+    assert resolve_config(make_args(api_key="k", resume="latest")).resume == "latest"
+
+
+def test_state_dir_is_repo_scoped(tmp_path: Path) -> None:
+    path = resolve_state_dir(tmp_path)
+    assert path == tmp_path / ".rpi_agent"
+    assert path.is_dir()
+
+
+def test_state_dir_falls_back_to_home_when_unwritable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
     # A regular file where the directory should be makes mkdir fail.
-    (tmp_path / ".rpi_agent").write_text("not a dir")
-    assert resolve_history_file_path(tmp_path) == Path.home() / ".rpi_agent_history"
+    (repo / ".rpi_agent").write_text("not a dir")
+
+    path = resolve_state_dir(repo)
+    assert path == home / ".rpi_agent" / "repo"
+    assert path.is_dir()

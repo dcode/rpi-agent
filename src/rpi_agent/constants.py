@@ -9,6 +9,14 @@ USER_ID: str = "local_developer"
 DEFAULT_MODEL: str = "gemini-3.8-flash-withtools"
 DEFAULT_BASE_URL: str = "https://api.genai.mil/v1"
 DEFAULT_SKILLS_DIR: Path = Path.home() / ".agents" / "skills"
+STATE_DIR_NAME: str = ".rpi_agent"
+
+# Model API Retry Policy
+DEFAULT_MAX_RETRIES: int = 5
+RETRY_BASE_DELAY_SECONDS: float = 2.0
+RETRY_MAX_DELAY_SECONDS: float = 60.0
+# A Retry-After longer than this is treated as non-retryable within a turn.
+MAX_RETRY_AFTER_SECONDS: float = 300.0
 
 # Token Optimization Thresholds
 MAX_TOOL_RESULT_PRESERVE_CHARS: int = 600
