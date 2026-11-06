@@ -21,6 +21,9 @@ def test_codebase_tools_composes_every_tool(tools: CodebaseTools) -> None:
     for name in (
         "find_files",
         "outline_file",
+        "search_symbols",
+        "list_symbols",
+        "generate_ctags",
         "search_code",
         "read_file",
         "write_file",
@@ -42,12 +45,15 @@ def test_build_tool_sets_partitions_read_and_write(
     assert read_names == [
         "find_files",
         "outline_file",
+        "search_symbols",
+        "list_symbols",
         "search_code",
         "read_file",
         "get_repo_metadata",
         "load_skill_resource",
     ]
     assert write_names == [
+        "generate_ctags",
         "write_file",
         "replace_in_file",
         "run_shell_command",
@@ -55,4 +61,9 @@ def test_build_tool_sets_partitions_read_and_write(
         "list_skills",
     ]
     # Sub-agents receive read_tools only; nothing mutating may leak in.
-    assert not {"write_file", "replace_in_file", "run_shell_command"} & set(read_names)
+    assert not {
+        "generate_ctags",
+        "write_file",
+        "replace_in_file",
+        "run_shell_command",
+    } & set(read_names)

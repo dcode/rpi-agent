@@ -19,6 +19,9 @@ replace_in_file.
 Version 0.7.2 survives quota exhaustion: rate-limit aware retries, daily-quota
 detection with resume instructions, persisted sessions (--resume, /sessions),
 and checkpointed sub-agent results reused on resume.
+
+Version 0.8.0 adds Universal and Exuberant Ctags indexing and symbol navigation
+tools (`search_symbols`, `list_symbols`, and `generate_ctags`).
 """
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"

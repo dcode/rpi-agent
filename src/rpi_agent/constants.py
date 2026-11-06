@@ -22,6 +22,20 @@ MAX_RETRY_AFTER_SECONDS: float = 300.0
 MAX_TOOL_RESULT_PRESERVE_CHARS: int = 600
 MAX_SEARCH_MATCHES_DEFAULT: int = 40
 MAX_FIND_FILES_DEFAULT: int = 100
+MAX_CTAGS_CONTEXT_LINES: int = 12
+
+CTAGS_CANDIDATE_FILES: tuple[str, ...] = (
+    "tags",
+    ".tags",
+    ".git/tags",
+)
+CTAGS_BINARIES: tuple[str, ...] = (
+    "ctags",
+    "universal-ctags",
+    "uctags",
+    "exuberant-ctags",
+    "ctags-exuberant",
+)
 
 IGNORED_DIRECTORIES: set[str] = {
     ".git",

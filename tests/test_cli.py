@@ -106,8 +106,8 @@ def test_main_starts_repl(repl_calls: list[tuple[Any, ...]], git_repo: Path) -> 
     assert registry.skills == {}
     assert runner.agent.name == "rpi_root_agent"
     assert runner.session_service is session_service
-    # 6 read + 5 write + run_subagent
-    assert len(runner.agent.tools) == 12
+    # 8 read + 6 write + run_subagent
+    assert len(runner.agent.tools) == 15
 
     assert state_dir == git_repo.resolve() / ".rpi_agent"
     assert isinstance(session_service, SqliteSessionService)

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from rpi_agent.skills import SkillRegistry
+from rpi_agent.tools.ctags import CtagsTool
 from rpi_agent.tools.find_files import FindFilesTool
 from rpi_agent.tools.outline_file import OutlineFileTool
 from rpi_agent.tools.read_file import ReadFileTool
@@ -19,6 +20,7 @@ from rpi_agent.tools.write_file import WriteFileTool
 
 
 class CodebaseTools(
+    CtagsTool,
     FindFilesTool,
     OutlineFileTool,
     SearchCodeTool,
@@ -45,6 +47,8 @@ def build_tool_sets(
     read_tools = [
         codebase_tools.find_files,
         codebase_tools.outline_file,
+        codebase_tools.search_symbols,
+        codebase_tools.list_symbols,
         codebase_tools.search_code,
         codebase_tools.read_file,
         codebase_tools.get_repo_metadata,
@@ -52,6 +56,7 @@ def build_tool_sets(
     ]
 
     write_tools = [
+        codebase_tools.generate_ctags,
         codebase_tools.write_file,
         codebase_tools.replace_in_file,
         codebase_tools.run_shell_command,
