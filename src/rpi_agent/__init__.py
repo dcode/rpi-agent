@@ -1,4 +1,4 @@
-"""rpi_agent - RPI CLI Agent using Google ADK and GenAI.mil.
+"""rpi_agent - RPI CLI Agent using Google ADK and OpenAI-compatible gateways.
 
 Executes the Research, Plan, Iterate, Implement (RPI) methodology against local
 Git repositories using Google Agent Development Kit (ADK), LiteLLM OpenAI-compatible
@@ -22,6 +22,10 @@ and checkpointed sub-agent results reused on resume.
 
 Version 0.8.0 adds Universal and Exuberant Ctags indexing and symbol navigation
 tools (`search_symbols`, `list_symbols`, and `generate_ctags`).
+
+Version 0.9.0 defaults to standard OpenAI API endpoints, adds `--gemini` for
+Google Gemini's OpenAI-compatible endpoint, and supports user configuration in
+`~/.config/rpi-agent.yml`.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"

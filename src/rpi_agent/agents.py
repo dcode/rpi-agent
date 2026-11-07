@@ -26,7 +26,7 @@ from rpi_agent.skills import SkillRegistry
 def get_llm_client(
     config: AppConfig, on_retry: RetryNotifier | None = None
 ) -> RetryingLiteLlm:
-    """Configures and returns the LiteLLM client for the GenAI.mil gateway.
+    """Configures and returns the LiteLLM client for the OpenAI-compatible gateway.
 
     Args:
         config: Application configuration with API key, base URL, and retries.

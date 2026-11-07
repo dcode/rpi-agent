@@ -27,11 +27,11 @@ from rpi_agent.llm import (
     retry_after_seconds,
 )
 
-# The exact message GenAI.mil returns once the daily credit quota is used up.
+# A typical message returned by a gateway once the daily credit quota is used up.
 DAILY_QUOTA_MESSAGE = (
     "litellm.RateLimitError: RateLimitError: OpenAIException - Daily credit limit "
     "exceeded 5000000/5000000 credits used. Quota resets in 24h 42m. Need a higher "
-    "limit? Request an increase at https://genai.mil/stark/user-ui"
+    "limit? Request an increase from your gateway administrator."
 )
 
 

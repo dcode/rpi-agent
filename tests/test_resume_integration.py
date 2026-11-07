@@ -123,8 +123,7 @@ def function_calls(contents: list[types.Content]) -> list[str]:
 
 @pytest.fixture(autouse=True)
 def env(monkeypatch: pytest.MonkeyPatch, git_repo: Path, tmp_path: Path) -> None:
-    for var in ("STARK_API_KEY", "STARK_BASE_URL", "STARK_MODEL"):
-        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.chdir(git_repo)
 

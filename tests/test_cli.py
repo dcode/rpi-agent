@@ -16,9 +16,8 @@ from rpi_agent.pruning import ContextPruner
 
 
 @pytest.fixture(autouse=True)
-def env(monkeypatch: pytest.MonkeyPatch, git_repo: Path) -> None:
-    for var in ("STARK_API_KEY", "STARK_BASE_URL", "STARK_MODEL"):
-        monkeypatch.delenv(var, raising=False)
+def env(monkeypatch: pytest.MonkeyPatch, git_repo: Path, tmp_path: Path) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
     monkeypatch.chdir(git_repo)
 
@@ -36,11 +35,13 @@ def repl_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
 
 def test_parse_defaults() -> None:
     args = cli.parse_arguments([])
+    assert args.config is None
     assert args.skills_dir == DEFAULT_SKILLS_DIR
     assert args.model is None and args.base_url is None and args.api_key is None
     assert args.max_retries is None and args.resume is None
     assert not any(
         (
+            args.gemini,
             args.yolo,
             args.no_prune,
             args.test_discovery,
@@ -51,11 +52,14 @@ def test_parse_defaults() -> None:
 
 
 def test_parse_all_options(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "custom.yml"
     args = cli.parse_arguments(
         [
+            "--config", str(cfg_file),
             "--skills-dir", str(tmp_path),
             "--model", "m",
             "--base-url", "u",
+            "--gemini",
             "--api-key", "k",
             "--yolo",
             "--no-prune",
@@ -64,9 +68,10 @@ def test_parse_all_options(tmp_path: Path) -> None:
             "--test-agent",
         ]
     )  # fmt: skip
+    assert args.config == cfg_file
     assert args.skills_dir == tmp_path
     assert (args.model, args.base_url, args.api_key) == ("m", "u", "k")
-    assert args.yolo and args.no_prune
+    assert args.gemini and args.yolo and args.no_prune
 
 
 @pytest.mark.parametrize(

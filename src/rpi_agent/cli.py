@@ -18,9 +18,12 @@ from rpi_agent.config import resolve_config, resolve_state_dir
 from rpi_agent.constants import (
     APP_NAME,
     DEFAULT_BASE_URL,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_GEMINI_MODEL,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MODEL,
     DEFAULT_SKILLS_DIR,
+    GEMINI_BASE_URL,
 )
 from rpi_agent.diagnostics import (
     run_agent_diagnostic,
@@ -48,13 +51,19 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         prog="rpi-agent",
-        description=f"RPI CLI Agent v{VERSION} using Google ADK and GenAI.mil.",
+        description=f"RPI CLI Agent v{VERSION} using Google ADK and OpenAI-compatible gateways.",
     )
     parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {VERSION}",
         help="Show program's version number and exit",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help=f"Path to configuration file (default: {DEFAULT_CONFIG_PATH})",
     )
     parser.add_argument(
         "--skills-dir",
@@ -66,19 +75,27 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--model",
         type=str,
         default=None,
-        help=f"Model identifier to invoke (default: {DEFAULT_MODEL})",
+        help=(
+            f"Model identifier to invoke (default: OPENAI_MODEL -> "
+            f"{DEFAULT_MODEL}, or {DEFAULT_GEMINI_MODEL} with --gemini)"
+        ),
     )
     parser.add_argument(
         "--base-url",
         type=str,
         default=None,
-        help=f"Gateway URL (default: STARK_BASE_URL -> OPENAI_BASE_URL -> {DEFAULT_BASE_URL})",
+        help=f"Gateway URL (default: OPENAI_BASE_URL -> {DEFAULT_BASE_URL})",
+    )
+    parser.add_argument(
+        "--gemini",
+        action="store_true",
+        help=f"Use Google Gemini OpenAI-compatible API endpoint ({GEMINI_BASE_URL})",
     )
     parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="Gateway API Key (default: STARK_API_KEY -> OPENAI_API_KEY)",
+        help="Gateway API Key (default: OPENAI_API_KEY)",
     )
     parser.add_argument(
         "--yolo",

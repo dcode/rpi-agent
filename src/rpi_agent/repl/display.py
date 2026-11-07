@@ -65,7 +65,7 @@ def display_welcome_banner(
     console.print(
         Panel(
             content,
-            title=f"[bold blue]🤖 RPI Agent REPL v{VERSION} (Google ADK & GenAI.mil)[/bold blue]",
+            title=f"[bold blue]🤖 RPI Agent REPL v{VERSION} (Google ADK)[/bold blue]",
             subtitle="[dim]Research • Plan • Iterate • Implement • Token-Optimized[/dim]",
             border_style="blue",
         )

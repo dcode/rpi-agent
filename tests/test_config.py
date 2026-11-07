@@ -5,33 +5,41 @@ from pathlib import Path
 
 import pytest
 
-from rpi_agent.config import resolve_config, resolve_state_dir
-from rpi_agent.constants import DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, DEFAULT_MODEL
+from rpi_agent.config import load_user_config, resolve_config, resolve_state_dir
+from rpi_agent.constants import (
+    DEFAULT_BASE_URL,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_MODEL,
+    DEFAULT_SKILLS_DIR,
+    GEMINI_BASE_URL,
+)
 from rpi_agent.exceptions import ConfigurationError
 
 ENV_VARS = (
-    "STARK_API_KEY",
     "OPENAI_API_KEY",
-    "STARK_BASE_URL",
     "OPENAI_BASE_URL",
-    "STARK_MODEL",
     "OPENAI_MODEL",
     "RPI_AGENT_MAX_RETRIES",
 )
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for var in ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
 
 def make_args(**overrides: object) -> argparse.Namespace:
     values: dict[str, object] = {
+        "config": None,
         "api_key": None,
         "base_url": None,
+        "gemini": False,
         "model": None,
-        "skills_dir": Path("~/skills"),
+        "skills_dir": DEFAULT_SKILLS_DIR,
         "yolo": False,
         "no_prune": False,
         "max_retries": None,
@@ -42,6 +50,13 @@ def make_args(**overrides: object) -> argparse.Namespace:
     }
     values.update(overrides)
     return argparse.Namespace(**values)
+
+
+def write_default_config(tmp_path: Path, content: str) -> Path:
+    cfg = tmp_path / ".config" / "rpi-agent.yml"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(content, encoding="utf-8")
+    return cfg
 
 
 def test_missing_api_key_raises() -> None:
@@ -58,30 +73,31 @@ def test_defaults_applied_when_only_key_given() -> None:
     assert config.yolo is False
 
 
-def test_skills_dir_is_expanded_and_resolved() -> None:
-    config = resolve_config(make_args(api_key="k"))
-    assert config.skills_dir == (Path.home() / "skills").resolve()
+def test_gemini_flag_sets_gemini_endpoint_and_default_model() -> None:
+    config = resolve_config(make_args(api_key="cli-key", gemini=True))
+    assert config.base_url == GEMINI_BASE_URL
+    assert config.model_name == DEFAULT_GEMINI_MODEL
 
 
-def test_stark_env_takes_precedence_over_openai(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("STARK_API_KEY", "stark-key")
-    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
-    monkeypatch.setenv("STARK_BASE_URL", "http://stark")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://openai")
-    monkeypatch.setenv("STARK_MODEL", "stark-model")
-    monkeypatch.setenv("OPENAI_MODEL", "openai-model")
-
-    config = resolve_config(make_args())
-    assert (config.api_key, config.base_url, config.model_name) == (
-        "stark-key",
-        "http://stark",
-        "stark-model",
+def test_gemini_flag_respects_explicit_model_and_base_url() -> None:
+    config = resolve_config(
+        make_args(
+            api_key="cli-key",
+            gemini=True,
+            model="gemini-2.5-pro",
+            base_url="http://custom-gemini/v1",
+        )
     )
+    assert config.base_url == "http://custom-gemini/v1"
+    assert config.model_name == "gemini-2.5-pro"
 
 
-def test_openai_env_used_as_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_skills_dir_is_expanded_and_resolved(tmp_path: Path) -> None:
+    config = resolve_config(make_args(api_key="k", skills_dir=Path("~/skills")))
+    assert config.skills_dir == (tmp_path / "skills").resolve()
+
+
+def test_openai_env_used(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://openai")
     monkeypatch.setenv("OPENAI_MODEL", "openai-model")
@@ -94,10 +110,16 @@ def test_openai_env_used_as_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_cli_args_override_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("STARK_API_KEY", "env-key")
-    monkeypatch.setenv("STARK_BASE_URL", "http://env")
-    monkeypatch.setenv("STARK_MODEL", "env-model")
+def test_cli_args_override_env_and_config_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    write_default_config(
+        tmp_path,
+        "api_key: file-key\nbase_url: http://file\nmodel: file-model\n",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://env")
+    monkeypatch.setenv("OPENAI_MODEL", "env-model")
 
     config = resolve_config(
         make_args(api_key="cli-key", base_url="http://cli", model="cli-model")
@@ -107,6 +129,127 @@ def test_cli_args_override_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "http://cli",
         "cli-model",
     )
+
+
+def test_env_overrides_config_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    write_default_config(
+        tmp_path,
+        "api_key: file-key\nbase_url: http://file\nmodel: file-model\nmax_retries: 2\n",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "env-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://env")
+    monkeypatch.setenv("OPENAI_MODEL", "env-model")
+    monkeypatch.setenv("RPI_AGENT_MAX_RETRIES", "7")
+
+    config = resolve_config(make_args())
+    assert (
+        config.api_key,
+        config.base_url,
+        config.model_name,
+        config.max_retries,
+    ) == ("env-key", "http://env", "env-model", 7)
+
+
+def test_config_file_supplies_all_options(tmp_path: Path) -> None:
+    write_default_config(
+        tmp_path,
+        "api-key: file-key\n"
+        "base-url: http://file/v1\n"
+        "model_name: custom-model\n"
+        "skills-dir: ~/my-skills\n"
+        "yolo: true\n"
+        "no-prune: true\n"
+        "max-retries: 3\n",
+    )
+
+    config = resolve_config(make_args())
+    assert config.api_key == "file-key"
+    assert config.base_url == "http://file/v1"
+    assert config.model_name == "custom-model"
+    assert config.skills_dir == (tmp_path / "my-skills").resolve()
+    assert config.yolo is True
+    assert config.prune_context is False
+    assert config.max_retries == 3
+
+
+def test_config_file_gemini_mode_and_prune_context(tmp_path: Path) -> None:
+    write_default_config(
+        tmp_path,
+        "api_key: gemini-key\ngemini: true\nprune_context: false\n",
+    )
+
+    config = resolve_config(make_args())
+    assert config.api_key == "gemini-key"
+    assert config.base_url == GEMINI_BASE_URL
+    assert config.model_name == DEFAULT_GEMINI_MODEL
+    assert config.prune_context is False
+
+
+def test_explicit_config_path_loaded(tmp_path: Path) -> None:
+    custom = tmp_path / "custom.yml"
+    custom.write_text("api_key: custom-key\nmodel: custom-m\n", encoding="utf-8")
+
+    config = resolve_config(make_args(config=custom))
+    assert config.api_key == "custom-key"
+    assert config.model_name == "custom-m"
+
+
+def test_explicit_config_path_missing_raises(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="Configuration file not found"):
+        load_user_config(tmp_path / "nonexistent.yml")
+
+
+def test_empty_config_file_returns_empty_dict(tmp_path: Path) -> None:
+    write_default_config(tmp_path, "# just a comment\n")
+    assert load_user_config() == {}
+
+
+def test_config_file_read_or_yaml_error_raises(tmp_path: Path) -> None:
+    write_default_config(tmp_path, "api_key: [unterminated\n")
+    with pytest.raises(ConfigurationError, match="Failed to load configuration file"):
+        load_user_config()
+
+
+def test_config_file_non_mapping_raises(tmp_path: Path) -> None:
+    write_default_config(tmp_path, "- item1\n- item2\n")
+    with pytest.raises(ConfigurationError, match="must contain a YAML mapping"):
+        load_user_config()
+
+
+def test_config_file_non_string_key_raises(tmp_path: Path) -> None:
+    write_default_config(tmp_path, "123: value\n")
+    with pytest.raises(
+        ConfigurationError, match="Configuration keys .* must be strings"
+    ):
+        load_user_config()
+
+
+def test_config_file_unknown_option_raises(tmp_path: Path) -> None:
+    write_default_config(tmp_path, "unknown_option: 1\n")
+    with pytest.raises(
+        ConfigurationError, match="Unknown configuration option 'unknown_option'"
+    ):
+        load_user_config()
+
+
+@pytest.mark.parametrize(
+    ("yaml_text", "match"),
+    [
+        ("api_key: ''\n", "must be a non-empty string"),
+        ("api_key: 123\n", "must be a non-empty string"),
+        ("gemini: 'yes'\n", "must be true or false"),
+        ("max_retries: true\n", "must be an integer"),
+        ("max_retries: '5'\n", "must be an integer"),
+    ],
+)
+def test_config_file_invalid_value_types_raise(
+    tmp_path: Path, yaml_text: str, match: str
+) -> None:
+    write_default_config(tmp_path, yaml_text)
+    with pytest.raises(ConfigurationError, match=match):
+        load_user_config()
 
 
 def test_flags_are_mapped() -> None:

@@ -6,8 +6,11 @@ from pathlib import Path
 
 APP_NAME: str = "rpi_agent_app"
 USER_ID: str = "local_developer"
-DEFAULT_MODEL: str = "gemini-3.8-flash-withtools"
-DEFAULT_BASE_URL: str = "https://api.genai.mil/v1"
+DEFAULT_MODEL: str = "gpt-4o"
+DEFAULT_GEMINI_MODEL: str = "gemini-2.5-flash"
+DEFAULT_BASE_URL: str = "https://api.openai.com/v1"
+GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+DEFAULT_CONFIG_PATH: Path = Path.home() / ".config" / "rpi-agent.yml"
 DEFAULT_SKILLS_DIR: Path = Path.home() / ".agents" / "skills"
 STATE_DIR_NAME: str = ".rpi_agent"
 
