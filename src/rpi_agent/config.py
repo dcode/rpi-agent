@@ -18,6 +18,7 @@ from rpi_agent.constants import (
     DEFAULT_MODEL,
     DEFAULT_SKILLS_DIR,
     GEMINI_BASE_URL,
+    PANE_AUTO_OPEN_LOG_LEVELS,
     STATE_DIR_NAME,
     VALID_LOG_LEVELS,
 )
@@ -274,7 +275,7 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
 
     cli_log_pane = bool(getattr(args, "log_pane", False))
     cfg_log_pane = bool(file_config.get("log_pane", False))
-    log_pane = cli_log_pane or cfg_log_pane or (log_level != DEFAULT_LOG_LEVEL)
+    log_pane = cli_log_pane or cfg_log_pane or log_level in PANE_AUTO_OPEN_LOG_LEVELS
 
     return AppConfig(
         api_key=api_key,

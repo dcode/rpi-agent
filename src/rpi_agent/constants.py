@@ -15,6 +15,8 @@ DEFAULT_SKILLS_DIR: Path = Path.home() / ".agents" / "skills"
 STATE_DIR_NAME: str = ".rpi_agent"
 DEFAULT_LOG_LEVEL: str = "WARNING"
 VALID_LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+# Levels verbose enough that choosing one opens the REPL log pane automatically.
+PANE_AUTO_OPEN_LOG_LEVELS: frozenset[str] = frozenset({"DEBUG", "INFO"})
 DEFAULT_LOG_BUFFER_MAX_RECORDS: int = 2000
 
 # Model API Retry Policy

@@ -13,6 +13,7 @@ from rich.markdown import Markdown
 
 from rpi_agent.checkpoints import CheckpointStore
 from rpi_agent.config import AppConfig, normalize_log_level
+from rpi_agent.constants import PANE_AUTO_OPEN_LOG_LEVELS
 from rpi_agent.exceptions import ConfigurationError, QuotaExhaustedError
 from rpi_agent.pruning import ContextPruner
 from rpi_agent.repl.commands import expand_command
@@ -124,7 +125,7 @@ def handle_logs_command(
 
     log_buffer.display_level = new_level
     config.log_level = new_level
-    if new_level in {"DEBUG", "INFO"}:
+    if new_level in PANE_AUTO_OPEN_LOG_LEVELS:
         log_pane.visible = True
         config.log_pane = True
     console.print(f"[bold green]✓ Log level set to {new_level}.[/bold green]")

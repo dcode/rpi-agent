@@ -1913,6 +1913,7 @@ name = "rpi-agent"
 source = { editable = "." }
 dependencies = [
     { name = "google-adk" },
+    { name = "httpx" },
     { name = "litellm" },
     { name = "mcp" },
     { name = "openai" },
@@ -1943,6 +1944,7 @@ types = [
 [package.metadata]
 requires-dist = [
     { name = "google-adk", specifier = ">=2.14.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "litellm", specifier = ">=1.108.0" },
     { name = "mcp", specifier = ">=2.0.0" },
     { name = "openai" },

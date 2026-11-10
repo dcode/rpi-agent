@@ -339,6 +339,23 @@ def test_log_level_and_log_file_resolution(
     assert cfg_cli.log_pane is True
 
 
+@pytest.mark.parametrize(
+    ("level", "expected_pane"),
+    [
+        ("DEBUG", True),
+        ("INFO", True),
+        ("WARNING", False),
+        ("ERROR", False),
+        ("CRITICAL", False),
+    ],
+)
+def test_log_pane_auto_opens_only_for_verbose_levels(
+    level: str, expected_pane: bool
+) -> None:
+    cfg = resolve_config(make_args(api_key="k", log_level=level))
+    assert cfg.log_pane is expected_pane
+
+
 def test_invalid_log_level_raises() -> None:
     with pytest.raises(ConfigurationError, match="Invalid log level 'trace'"):
         resolve_config(make_args(api_key="k", log_level="trace"))

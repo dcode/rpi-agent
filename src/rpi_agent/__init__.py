@@ -31,6 +31,9 @@ Version 0.10.0 adds structured logging with `structlog`, OpenTelemetry tracing
 and HTTP request/response telemetry capture, an interactive split-screen REPL
 log pane with scrollback, and on-demand or persistent log export at configurable
 verbosity levels.
+
+Version 0.10.1 opens the log pane automatically only for the DEBUG and INFO
+levels (not ERROR or CRITICAL) and declares `httpx` as a direct dependency.
 """
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
