@@ -21,6 +21,9 @@ from rpi_agent.llm import RetryingLiteLlm, RetryNotifier
 from rpi_agent.pruning import ContextPruner
 from rpi_agent.repo import RepoContext
 from rpi_agent.skills import SkillRegistry
+from rpi_agent.telemetry import get_logger, get_tracer
+
+_logger = get_logger("rpi_agent.agents")
 
 
 def get_llm_client(
@@ -98,79 +101,116 @@ class SubAgentManager:
         if store is not None and session_id is not None:
             saved = store.load(session_id, skill_name, task_prompt)
             if saved is not None:
+                _logger.info(
+                    "subagent.checkpoint_reused",
+                    skill_name=skill_name,
+                    session_id=session_id,
+                    created=saved.created,
+                )
                 return (
                     f"[Reused saved sub-agent result from {saved.created}; "
                     f"same skill and task in this session.]\n\n{saved.result}"
                 )
 
-        try:
-            skill = self.registry.skills.get(skill_name)
-            skill_instructions = (
-                skill.instructions
-                if skill
-                else f"Execute this task objectively: {skill_name}"
+        tracer = get_tracer("rpi_agent.agents")
+        with tracer.start_as_current_span(
+            "subagent.run",
+            attributes={
+                "subagent.skill_name": skill_name,
+                "session.id": session_id or "",
+            },
+        ):
+            _logger.info(
+                "subagent.start",
+                skill_name=skill_name,
+                session_id=session_id,
             )
+            try:
+                skill = self.registry.skills.get(skill_name)
+                skill_instructions = (
+                    skill.instructions
+                    if skill
+                    else f"Execute this task objectively: {skill_name}"
+                )
 
-            # Always a valid identifier: fixed alpha prefix plus [a-zA-Z0-9_] only.
-            sanitized_name = re.sub(r"[^a-zA-Z0-9_]", "_", f"subagent_{skill_name}")
+                # Always a valid identifier: fixed alpha prefix plus [a-zA-Z0-9_] only.
+                sanitized_name = re.sub(r"[^a-zA-Z0-9_]", "_", f"subagent_{skill_name}")
 
-            subagent_instruction = (
-                f"You are a specialized sub-agent executing skill '{skill_name}'.\n"
-                f"Repository: {self.repo_ctx.repo_name} | Branch: {self.repo_ctx.branch_name}\n"
-                f"CRITICAL: You are read-only. Answer the task concisely using provided tools.\n\n"
-                f"### Skill Guidance:\n{skill_instructions}"
+                subagent_instruction = (
+                    f"You are a specialized sub-agent executing skill '{skill_name}'.\n"
+                    f"Repository: {self.repo_ctx.repo_name} | Branch: {self.repo_ctx.branch_name}\n"
+                    f"CRITICAL: You are read-only. Answer the task concisely using provided tools.\n\n"
+                    f"### Skill Guidance:\n{skill_instructions}"
+                )
+
+                client = get_llm_client(self.config, self.on_retry)
+                sub_agent = LlmAgent(
+                    name=sanitized_name,
+                    model=client,
+                    instruction=subagent_instruction,
+                    tools=self.read_tools,
+                )
+
+                session_service = InMemorySessionService()
+                sub_session_id = f"sub_{uuid.uuid4().hex[:12]}"
+                await session_service.create_session(
+                    app_name=APP_NAME, user_id=USER_ID, session_id=sub_session_id
+                )
+
+                runner = Runner(
+                    agent=sub_agent,
+                    app_name=APP_NAME,
+                    session_service=session_service,
+                )
+
+                content = types.Content(
+                    role="user", parts=[types.Part(text=task_prompt)]
+                )
+                collected_response: list[str] = []
+
+                async for event in runner.run_async(
+                    user_id=USER_ID,
+                    session_id=sub_session_id,
+                    new_message=content,
+                ):
+                    if event.is_final_response():
+                        if event.content and event.content.parts:
+                            for part in event.content.parts:
+                                if part.text:
+                                    collected_response.append(part.text)
+
+            except openai.OpenAIError as err:
+                _logger.error(
+                    "subagent.api_error",
+                    skill_name=skill_name,
+                    error=str(err),
+                )
+                # Retries are exhausted by now; let the root agent decide how to proceed.
+                return (
+                    f"Subagent '{skill_name}' failed with a model API error after "
+                    f"retries: {err}"
+                )
+            except (ValueError, KeyError, CodebaseToolError) as err:
+                _logger.error(
+                    "subagent.error",
+                    skill_name=skill_name,
+                    error=str(err),
+                )
+                return f"Subagent '{skill_name}' execution failed: {err}"
+
+            final_text = "".join(collected_response).strip()
+            if not final_text:
+                _logger.warning("subagent.empty_output", skill_name=skill_name)
+                return f"Subagent for '{skill_name}' completed with no output."
+
+            if store is not None and session_id is not None:
+                store.save(session_id, skill_name, task_prompt, final_text)
+            _logger.info(
+                "subagent.completed",
+                skill_name=skill_name,
+                output_chars=len(final_text),
             )
-
-            client = get_llm_client(self.config, self.on_retry)
-            sub_agent = LlmAgent(
-                name=sanitized_name,
-                model=client,
-                instruction=subagent_instruction,
-                tools=self.read_tools,
-            )
-
-            session_service = InMemorySessionService()
-            sub_session_id = f"sub_{uuid.uuid4().hex[:12]}"
-            await session_service.create_session(
-                app_name=APP_NAME, user_id=USER_ID, session_id=sub_session_id
-            )
-
-            runner = Runner(
-                agent=sub_agent,
-                app_name=APP_NAME,
-                session_service=session_service,
-            )
-
-            content = types.Content(role="user", parts=[types.Part(text=task_prompt)])
-            collected_response: list[str] = []
-
-            async for event in runner.run_async(
-                user_id=USER_ID,
-                session_id=sub_session_id,
-                new_message=content,
-            ):
-                if event.is_final_response():
-                    if event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if part.text:
-                                collected_response.append(part.text)
-
-        except openai.OpenAIError as err:
-            # Retries are exhausted by now; let the root agent decide how to proceed.
-            return (
-                f"Subagent '{skill_name}' failed with a model API error after "
-                f"retries: {err}"
-            )
-        except (ValueError, KeyError, CodebaseToolError) as err:
-            return f"Subagent '{skill_name}' execution failed: {err}"
-
-        final_text = "".join(collected_response).strip()
-        if not final_text:
-            return f"Subagent for '{skill_name}' completed with no output."
-
-        if store is not None and session_id is not None:
-            store.save(session_id, skill_name, task_prompt, final_text)
-        return final_text
+            return final_text
 
 
 def build_root_agent(

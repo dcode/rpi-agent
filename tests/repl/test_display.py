@@ -50,11 +50,15 @@ def test_welcome_banner_yolo_no_prune(
 ) -> None:
     console = recording_console()
     display_welcome_banner(
-        console, make_config(yolo=True, prune_context=False), repo_ctx, registry
+        console,
+        make_config(yolo=True, prune_context=False, log_pane=True, log_level="INFO"),
+        repo_ctx,
+        registry,
     )
     out = console.export_text()
     assert "YOLO (Auto-Approve)" in out
     assert "Token Guard: Disabled" in out
+    assert "INFO | Split-Pane Open" in out
 
 
 def test_help_lists_commands() -> None:

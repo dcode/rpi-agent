@@ -13,24 +13,47 @@ import yaml
 from rpi_agent.constants import (
     DEFAULT_BASE_URL,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_LOG_LEVEL,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MODEL,
     DEFAULT_SKILLS_DIR,
     GEMINI_BASE_URL,
     STATE_DIR_NAME,
+    VALID_LOG_LEVELS,
 )
 from rpi_agent.exceptions import ConfigurationError
 
 _STRING_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"api_key", "base_url", "model", "skills_dir"}
+    {"api_key", "base_url", "model", "skills_dir", "log_level", "log_file"}
 )
 _BOOL_CONFIG_KEYS: frozenset[str] = frozenset(
-    {"gemini", "yolo", "no_prune", "prune_context"}
+    {"gemini", "yolo", "no_prune", "prune_context", "log_pane"}
 )
 _INT_CONFIG_KEYS: frozenset[str] = frozenset({"max_retries"})
 _ALLOWED_CONFIG_KEYS: frozenset[str] = (
     _STRING_CONFIG_KEYS | _BOOL_CONFIG_KEYS | _INT_CONFIG_KEYS
 )
+
+
+def normalize_log_level(raw_level: str) -> str:
+    """Validates and normalizes a log level name to uppercase.
+
+    Args:
+        raw_level: Log level string (e.g. 'info', 'DEBUG', 'WARNING').
+
+    Returns:
+        Normalized uppercase log level string.
+
+    Raises:
+        ConfigurationError: If `raw_level` is not one of `VALID_LOG_LEVELS`.
+    """
+    normalized = raw_level.strip().upper()
+    if normalized not in VALID_LOG_LEVELS:
+        allowed = ", ".join(VALID_LOG_LEVELS)
+        raise ConfigurationError(
+            f"Invalid log level '{raw_level}'. Choose from: {allowed}."
+        )
+    return normalized
 
 
 @dataclass(slots=True)
@@ -46,6 +69,9 @@ class AppConfig:
         prune_context: If True, prunes verbose tool outputs from conversation history.
         max_retries: Retries for transient model API errors (rate limits, 5xx).
         resume: Session ID to resume, "latest", or None to start a new session.
+        log_level: Active logging verbosity level (default: WARNING).
+        log_file: Optional file path to stream structured logs to on disk.
+        log_pane: If True, opens the split-screen log pane in the REPL.
         test_discovery: Runs skill discovery diagnostics and exits.
         test_tools: Runs codebase tool sanity diagnostics and exits.
         test_agent: Runs agent setup diagnostics and exits.
@@ -59,6 +85,9 @@ class AppConfig:
     prune_context: bool = True
     max_retries: int = DEFAULT_MAX_RETRIES
     resume: str | None = None
+    log_level: str = DEFAULT_LOG_LEVEL
+    log_file: Path | None = None
+    log_pane: bool = False
     test_discovery: bool = False
     test_tools: bool = False
     test_agent: bool = False
@@ -223,6 +252,30 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
     if max_retries < 0:
         raise ConfigurationError(f"max retries must be >= 0, got {max_retries}.")
 
+    raw_log_level = (
+        getattr(args, "log_level", None)
+        or os.environ.get("RPI_AGENT_LOG_LEVEL")
+        or file_config.get("log_level")
+        or DEFAULT_LOG_LEVEL
+    )
+    log_level = normalize_log_level(raw_log_level)
+
+    cli_log_file = getattr(args, "log_file", None)
+    env_log_file = os.environ.get("RPI_AGENT_LOG_FILE")
+    cfg_log_file = file_config.get("log_file")
+    if cli_log_file is not None:
+        log_file: Path | None = Path(cli_log_file).expanduser().resolve()
+    elif env_log_file:
+        log_file = Path(env_log_file).expanduser().resolve()
+    elif cfg_log_file:
+        log_file = Path(cfg_log_file).expanduser().resolve()
+    else:
+        log_file = None
+
+    cli_log_pane = bool(getattr(args, "log_pane", False))
+    cfg_log_pane = bool(file_config.get("log_pane", False))
+    log_pane = cli_log_pane or cfg_log_pane or (log_level != DEFAULT_LOG_LEVEL)
+
     return AppConfig(
         api_key=api_key,
         base_url=base_url,
@@ -232,6 +285,9 @@ def resolve_config(args: argparse.Namespace) -> AppConfig:
         prune_context=prune_context,
         max_retries=max_retries,
         resume=args.resume,
+        log_level=log_level,
+        log_file=log_file,
+        log_pane=log_pane,
         test_discovery=args.test_discovery,
         test_tools=args.test_tools,
         test_agent=args.test_agent,

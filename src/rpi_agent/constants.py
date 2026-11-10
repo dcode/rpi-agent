@@ -7,12 +7,15 @@ from pathlib import Path
 APP_NAME: str = "rpi_agent_app"
 USER_ID: str = "local_developer"
 DEFAULT_MODEL: str = "gpt-4o"
-DEFAULT_GEMINI_MODEL: str = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL: str = "gemini-3.8-flash"
 DEFAULT_BASE_URL: str = "https://api.openai.com/v1"
 GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_CONFIG_PATH: Path = Path.home() / ".config" / "rpi-agent.yml"
 DEFAULT_SKILLS_DIR: Path = Path.home() / ".agents" / "skills"
 STATE_DIR_NAME: str = ".rpi_agent"
+DEFAULT_LOG_LEVEL: str = "WARNING"
+VALID_LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+DEFAULT_LOG_BUFFER_MAX_RECORDS: int = 2000
 
 # Model API Retry Policy
 DEFAULT_MAX_RETRIES: int = 5

@@ -219,3 +219,46 @@ def test_quota_exhaustion_stops_with_resume_instructions(
     assert "Quota resets in 24h 42m." in result.out
     assert f"rpi-agent --resume {session_id}" in result.out
     assert "Session cancelled" not in result.out
+
+
+def test_logs_commands_toggle_level_clear_and_save(
+    run_loop: Callable[..., LoopResult],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Ensure fallback SessionLogBuffer creation is covered when active buffer is None
+    monkeypatch.setattr(loop_module, "get_active_log_buffer", lambda: None)
+    save_file = tmp_path / "saved_logs.jsonl"
+    bad_dir = tmp_path / "blocker"
+    bad_dir.write_text("file", encoding="utf-8")
+
+    result = run_loop(
+        [
+            "/logs",
+            "/logs toggle",
+            "/logs show",
+            "/logs hide",
+            "/logs INFO",
+            "/logs level DEBUG",
+            "/logs WARNING",
+            "/logs invalid_level",
+            "/logs save",
+            f"/logs save {save_file} DEBUG",
+            f"/logs save {save_file}",
+            f"/logs save {save_file} INVALID",
+            f"/logs save {bad_dir / 'sub.jsonl'}",
+            "/logs clear",
+            "/exit",
+        ]
+    )
+    assert "Log pane shown" in result.out
+    assert "Log pane hidden" in result.out
+    assert "Log level set to INFO" in result.out
+    assert "Log level set to DEBUG" in result.out
+    assert "Log level set to WARNING" in result.out
+    assert "Invalid log level 'invalid_level'" in result.out
+    assert "Usage: /logs save <path>" in result.out
+    assert "Saved" in result.out
+    assert "Failed to save logs:" in result.out
+    assert "Session log buffer cleared" in result.out
+    assert save_file.is_file()

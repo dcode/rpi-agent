@@ -21,6 +21,8 @@ ENV_VARS = (
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
     "RPI_AGENT_MAX_RETRIES",
+    "RPI_AGENT_LOG_LEVEL",
+    "RPI_AGENT_LOG_FILE",
 )
 
 
@@ -44,6 +46,9 @@ def make_args(**overrides: object) -> argparse.Namespace:
         "no_prune": False,
         "max_retries": None,
         "resume": None,
+        "log_level": None,
+        "log_file": None,
+        "log_pane": False,
         "test_discovery": False,
         "test_tools": False,
         "test_agent": False,
@@ -296,6 +301,47 @@ def test_max_retries_negative() -> None:
 def test_resume_is_mapped() -> None:
     assert resolve_config(make_args(api_key="k")).resume is None
     assert resolve_config(make_args(api_key="k", resume="latest")).resume == "latest"
+
+
+def test_log_level_and_log_file_resolution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Default level is WARNING and log_pane is False
+    cfg_default = resolve_config(make_args(api_key="k"))
+    assert cfg_default.log_level == "WARNING"
+    assert cfg_default.log_file is None
+    assert cfg_default.log_pane is False
+
+    # Config file supplies log_level, log_file, and log_pane
+    write_default_config(
+        tmp_path,
+        "api_key: k\nlog_level: info\nlog_file: ~/cfg.log\nlog_pane: true\n",
+    )
+    cfg_file = resolve_config(make_args())
+    assert cfg_file.log_level == "INFO"
+    assert cfg_file.log_file == (tmp_path / "cfg.log").resolve()
+    assert cfg_file.log_pane is True
+
+    # Environment variables override config file
+    monkeypatch.setenv("RPI_AGENT_LOG_LEVEL", "debug")
+    monkeypatch.setenv("RPI_AGENT_LOG_FILE", str(tmp_path / "env.log"))
+    cfg_env = resolve_config(make_args())
+    assert cfg_env.log_level == "DEBUG"
+    assert cfg_env.log_file == (tmp_path / "env.log").resolve()
+
+    # CLI arguments override env and config file
+    cli_log = tmp_path / "cli.log"
+    cfg_cli = resolve_config(
+        make_args(log_level="error", log_file=cli_log, log_pane=True)
+    )
+    assert cfg_cli.log_level == "ERROR"
+    assert cfg_cli.log_file == cli_log.resolve()
+    assert cfg_cli.log_pane is True
+
+
+def test_invalid_log_level_raises() -> None:
+    with pytest.raises(ConfigurationError, match="Invalid log level 'trace'"):
+        resolve_config(make_args(api_key="k", log_level="trace"))
 
 
 def test_state_dir_is_repo_scoped(tmp_path: Path) -> None:

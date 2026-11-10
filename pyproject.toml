@@ -8,14 +8,17 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "google-adk",
-    "litellm>=1.40.0",
-    "mcp",
+    "google-adk>=2.14.0",
+    "litellm>=1.108.0",
+    "mcp>=2.0.0",
     "openai",
+    "opentelemetry-api>=1.45.0",
+    "opentelemetry-sdk>=1.45.0",
     "prompt-toolkit",
     "python-frontmatter",
     "pyyaml",
     "rich",
+    "structlog>=26.1.0",
 ]
 
 [project.scripts]

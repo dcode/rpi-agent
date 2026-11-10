@@ -53,6 +53,7 @@ def test_parse_defaults() -> None:
 
 def test_parse_all_options(tmp_path: Path) -> None:
     cfg_file = tmp_path / "custom.yml"
+    log_file = tmp_path / "app.log"
     args = cli.parse_arguments(
         [
             "--config", str(cfg_file),
@@ -63,6 +64,9 @@ def test_parse_all_options(tmp_path: Path) -> None:
             "--api-key", "k",
             "--yolo",
             "--no-prune",
+            "--log-level", "DEBUG",
+            "--log-file", str(log_file),
+            "--log-pane",
             "--test-discovery",
             "--test-tools",
             "--test-agent",
@@ -72,6 +76,9 @@ def test_parse_all_options(tmp_path: Path) -> None:
     assert args.skills_dir == tmp_path
     assert (args.model, args.base_url, args.api_key) == ("m", "u", "k")
     assert args.gemini and args.yolo and args.no_prune
+    assert args.log_level == "DEBUG"
+    assert args.log_file == log_file
+    assert args.log_pane is True
 
 
 @pytest.mark.parametrize(

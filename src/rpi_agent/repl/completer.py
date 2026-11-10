@@ -28,6 +28,7 @@ class RpiCliCompleter(Completer):
             ("/help", "Show CLI usage and available commands"),
             ("/skills", "List all discovered skills in ~/.agents/skills"),
             ("/status", "Display active repository, model, and gateway configuration"),
+            ("/logs", "Toggle split-screen log pane, change level, or save logs"),
             ("/research", "Trigger the rpi-research workflow for a topic"),
             ("/plan", "Trigger the rpi-plan workflow"),
             ("/iterate", "Refine an existing plan with feedback"),

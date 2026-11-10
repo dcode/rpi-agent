@@ -20,6 +20,7 @@ from rpi_agent.constants import (
     DEFAULT_BASE_URL,
     DEFAULT_CONFIG_PATH,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_LOG_LEVEL,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MODEL,
     DEFAULT_SKILLS_DIR,
@@ -37,6 +38,7 @@ from rpi_agent.repl.display import make_retry_notifier
 from rpi_agent.repo import RepoContext
 from rpi_agent.sessions import LATEST_SESSION, open_session_service
 from rpi_agent.skills import SkillRegistry
+from rpi_agent.telemetry import setup_logging
 from rpi_agent.tools import CodebaseTools, build_tool_sets
 
 
@@ -125,6 +127,26 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Resume a saved session (default: the most recent one)",
     )
     parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,
+        help=(
+            f"Logging verbosity level: DEBUG, INFO, WARNING, ERROR, CRITICAL "
+            f"(default: RPI_AGENT_LOG_LEVEL -> {DEFAULT_LOG_LEVEL})"
+        ),
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help="Optional file path to persist structured JSONL logs to disk",
+    )
+    parser.add_argument(
+        "--log-pane",
+        action="store_true",
+        help="Open the split-screen session log pane in the REPL",
+    )
+    parser.add_argument(
         "--test-discovery",
         action="store_true",
         help="Run discovery diagnostics across the skills directory and exit",
@@ -146,6 +168,7 @@ async def main(argv: list[str] | None = None) -> None:
     """Main application setup and execution entry point."""
     args = parse_arguments(argv)
     config = resolve_config(args)
+    setup_logging(log_level=config.log_level, log_file=config.log_file)
     repo_ctx = RepoContext.capture()
     registry = SkillRegistry(config.skills_dir)
     registry.scan()

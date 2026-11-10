@@ -22,6 +22,9 @@ from rpi_agent.constants import (
     RETRY_MAX_DELAY_SECONDS,
 )
 from rpi_agent.exceptions import QuotaExhaustedError
+from rpi_agent.telemetry import get_logger, get_tracer
+
+_logger = get_logger("rpi_agent.llm")
 
 # Transient failures worth retrying with backoff.
 RETRYABLE_ERRORS: tuple[type[Exception], ...] = (
@@ -133,39 +136,102 @@ class RetryingLiteLlm(LiteLlm):
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse]:
         """Generates content, retrying transient failures before any output."""
+        tracer = get_tracer("rpi_agent.llm")
+        model_name = llm_request.model or self.model
         attempt = 0
-        while True:
-            yielded = False
-            try:
-                async for response in super().generate_content_async(
-                    llm_request, stream
-                ):
-                    yielded = True
-                    yield response
-                return
-            except openai.OpenAIError as err:
-                # Checked for every API error: some gateways report quota as 403.
-                if is_quota_exhausted(err):
-                    raise QuotaExhaustedError(
-                        str(err), reset_hint=quota_reset_hint(err)
-                    ) from err
-
-                retry_after = retry_after_seconds(err)
-                # Never replay a partially streamed response; give up when out of
-                # attempts or when the server asks us to wait longer than a turn.
-                if (
-                    not isinstance(err, RETRYABLE_ERRORS)
-                    or yielded
-                    or attempt >= self._max_retries
-                    or (
-                        retry_after is not None
-                        and retry_after > MAX_RETRY_AFTER_SECONDS
+        with tracer.start_as_current_span(
+            "llm.generate_content",
+            attributes={
+                "gen_ai.request.model": str(model_name),
+                "llm.stream": stream,
+            },
+        ) as span:
+            _logger.info(
+                "llm.request",
+                model=model_name,
+                stream=stream,
+                contents_count=len(llm_request.contents or []),
+            )
+            while True:
+                yielded = False
+                try:
+                    async for response in super().generate_content_async(
+                        llm_request, stream
+                    ):
+                        yielded = True
+                        if response.usage_metadata is not None:
+                            prompt_tokens = (
+                                response.usage_metadata.prompt_token_count or 0
+                            )
+                            completion_tokens = (
+                                response.usage_metadata.candidates_token_count or 0
+                            )
+                            total_tokens = (
+                                response.usage_metadata.total_token_count or 0
+                            )
+                            span.set_attribute(
+                                "gen_ai.usage.input_tokens", prompt_tokens
+                            )
+                            span.set_attribute(
+                                "gen_ai.usage.output_tokens", completion_tokens
+                            )
+                            _logger.info(
+                                "llm.usage",
+                                model=model_name,
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                                total_tokens=total_tokens,
+                            )
+                        yield response
+                    _logger.info(
+                        "llm.response",
+                        model=model_name,
+                        attempts=attempt + 1,
                     )
-                ):
-                    raise
+                    return
+                except openai.OpenAIError as err:
+                    # Checked for every API error: some gateways report quota as 403.
+                    if is_quota_exhausted(err):
+                        hint = quota_reset_hint(err)
+                        _logger.error(
+                            "llm.quota_exhausted",
+                            model=model_name,
+                            reset_hint=hint,
+                            error=str(err),
+                        )
+                        raise QuotaExhaustedError(str(err), reset_hint=hint) from err
 
-                delay = backoff_delay(attempt, retry_after)
-                attempt += 1
-                if self._on_retry is not None:
-                    self._on_retry(attempt, self._max_retries, delay, err)
-                await _sleep(delay)
+                    retry_after = retry_after_seconds(err)
+                    # Never replay a partially streamed response; give up when out of
+                    # attempts or when the server asks us to wait longer than a turn.
+                    if (
+                        not isinstance(err, RETRYABLE_ERRORS)
+                        or yielded
+                        or attempt >= self._max_retries
+                        or (
+                            retry_after is not None
+                            and retry_after > MAX_RETRY_AFTER_SECONDS
+                        )
+                    ):
+                        _logger.error(
+                            "llm.error",
+                            model=model_name,
+                            error_type=type(err).__name__,
+                            attempt=attempt + 1,
+                            error=str(err),
+                        )
+                        raise
+
+                    delay = backoff_delay(attempt, retry_after)
+                    attempt += 1
+                    _logger.warning(
+                        "llm.retry",
+                        model=model_name,
+                        error_type=type(err).__name__,
+                        attempt=attempt,
+                        max_retries=self._max_retries,
+                        delay_seconds=round(delay, 2),
+                    )
+                    if self._on_retry is not None:
+                        self._on_retry(attempt, self._max_retries, delay, err)
+                    await _sleep(delay)

@@ -54,6 +54,11 @@ def display_welcome_banner(
     content.append(f"{prune_text} | Structure Outlining: Enabled\n", style="green")
     content.append("• API Retries: ", style="bold cyan")
     content.append(f"up to {config.max_retries} with backoff\n")
+    content.append("• Logging: ", style="bold cyan")
+    pane_status = (
+        "Split-Pane Open" if config.log_pane else "Split-Pane Hidden (F2 or /logs)"
+    )
+    content.append(f"{config.log_level} | {pane_status}\n")
     content.append("• Shell Safety: ", style="bold cyan")
     content.append(safety_text, style=safety_style)
     content.append("\n\nType ")
@@ -87,6 +92,10 @@ def display_help(console: Console) -> None:
     table.add_row("/implement <plan>", "Execute implementation plan")
     table.add_row("/skills", "List all discovered skills in ~/.agents/skills")
     table.add_row("/status", "Show active repository, model, and token guard status")
+    table.add_row(
+        "/logs [level|save]",
+        "Toggle log pane (F2), set level (INFO/DEBUG), or save logs to disk",
+    )
     table.add_row("/clear, /new", "Reset context window with new session ID")
     table.add_row("/sessions", "List saved sessions (resume with --resume <id>)")
     table.add_row("/exit, /quit", "Exit the CLI agent")
@@ -122,6 +131,7 @@ def display_status(
             f"[bold]Turns:[/bold] {turn_counter}\n"
             f"[bold]Token Pruning:[/bold] {'Enabled' if config.prune_context else 'Disabled'}\n"
             f"[bold]Max Retries:[/bold] {config.max_retries}\n"
+            f"[bold]Log Level:[/bold] {config.log_level}\n"
             f"[bold]Safety Policy:[/bold] {'YOLO' if config.yolo else 'Protected'}",
             title="Active Session Status",
             border_style="cyan",

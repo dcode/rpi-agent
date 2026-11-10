@@ -179,7 +179,15 @@ def test_client_disables_sdk_retries_and_keeps_policy_private() -> None:
 def test_success_passes_through(
     monkeypatch: pytest.MonkeyPatch, sleeps: list[float]
 ) -> None:
-    calls = scripted(monkeypatch, [[response("a"), response("b")]])
+    resp_with_usage = LlmResponse(
+        content=types.Content(role="model", parts=[types.Part(text="b")]),
+        usage_metadata=types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=10,
+            candidates_token_count=5,
+            total_token_count=15,
+        ),
+    )
+    calls = scripted(monkeypatch, [[response("a"), resp_with_usage]])
     out = collect(RetryingLiteLlm(model="openai/m"))
     assert [r.content.parts[0].text for r in out if r.content and r.content.parts] == [
         "a",

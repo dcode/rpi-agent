@@ -26,6 +26,11 @@ tools (`search_symbols`, `list_symbols`, and `generate_ctags`).
 Version 0.9.0 defaults to standard OpenAI API endpoints, adds `--gemini` for
 Google Gemini's OpenAI-compatible endpoint, and supports user configuration in
 `~/.config/rpi-agent.yml`.
+
+Version 0.10.0 adds structured logging with `structlog`, OpenTelemetry tracing
+and HTTP request/response telemetry capture, an interactive split-screen REPL
+log pane with scrollback, and on-demand or persistent log export at configurable
+verbosity levels.
 """
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
